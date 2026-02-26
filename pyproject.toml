@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "AppNetComms"
+version = "1.0.0
+authors = [
+  { name="Jason Piszcyk", email="Jason.Piszcyk@gmail.com" },
+]
+description = "Network communcations for Apps"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "pytest",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/JasonPiszcyk/AppNetComms"
+"Bug Tracker" = "https://github.com/JasonPiszcyk/AppNetComms/issues"
+
+[tool.pytest.ini_options]
+pythonpath = [q
+  "src"
+]
