@@ -32,6 +32,7 @@ from __future__ import annotations
 import socket
 
 # Local app modules
+from appnetcomms.common import put_socket, get_socket
 from appnetcomms.constants import (
     DEFAULT_LISTEN_PORT,
     MAX_SOCKET_SIZE,
@@ -174,7 +175,7 @@ class NetCommClient():
         Raises:
             None
         '''
-        if not isinstance(self._socket, socket):
+        if not isinstance(self._socket, socket.socket):
             if self._protocol == ProtocolType.TCP:
                 if self._family == IPFamily.IPV4:
                     self._socket = socket.socket(
@@ -262,37 +263,16 @@ class NetCommClient():
                 When the buffer to be sent exceeds the maximum size
         '''
         assert isinstance(buffer, bytes), "buffer must be of type bytes"
-        if not isinstance(self._socket, socket) or not self._socket:
+        if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
 
-        # Ensure the buffer isn't too big
-        if len(buffer) > MAX_BUFFER_SIZE:
-            raise MemoryError(f"send buffer exceeded {MAX_BUFFER_SIZE} bytes")
-
-        # Copy the buffer so the original is left intact
-        _buffer_copy = bytes(buffer)
-
-        # Send the message in parts
-        while len(_buffer_copy) > 0:
-            _send_buffer = _buffer_copy[:MAX_SOCKET_SIZE]
-            _buffer_copy = _buffer_copy[MAX_SOCKET_SIZE:]
-
-            # If we send MAX_SOCKET_SIZE bytes, receiver assumes there is more
-            # data and will wait for it.  If there is nothiung else to send,
-            # pad the buffer_copy to ensure the other end finishes constructing
-            # the receive buffer.
-            if (len(_buffer_copy) < 1 and len(_send_buffer) == MAX_SOCKET_SIZE):
-                _buffer_copy = BUFFER_PADDING
-
-            if self._protocol == ProtocolType.TCP:
-                # TCP
-                self._socket.sendall(_send_buffer)
-            else:
-                # UDP
-                self._socket.sendto(
-                    _send_buffer,
-                    (self._address, self._port)
-                )
+        put_socket(
+            send_socket=self._socket,
+            buffer=buffer,
+            protocol=self._protocol,
+            address=self._address,
+            port=self._port
+        )
 
 
     #
@@ -306,39 +286,16 @@ class NetCommClient():
             None
 
         Returns:
-            None
+            bytes - The received data buffer
 
         Raises:
             FileNotFoundError:
                 When the socket has not been created
         '''
-        if not isinstance(self._socket, socket) or not self._socket:
+        if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
 
-        _buffer = b""
-
-        # Ensure the buffer isn't too big
-
-        while True:
-            _buffer_part = self._socket.recv(MAX_SOCKET_SIZE)
-            if _buffer_part == BUFFER_PADDING:
-                # We have all of the data, so ignore this
-                # Padding sent as message size was right on boundary
-                break
-
-            # Check to make sure the buffer hasn't grown too large
-            if len(_buffer) + len(_buffer_part) > MAX_BUFFER_SIZE:
-                raise MemoryError(
-                    f"receive buffer exceeded {MAX_BUFFER_SIZE} bytes"
-                )
-
-            _buffer = _buffer + _buffer_part
-
-            # Check to see if more data is expected
-            if len(_buffer_part) < MAX_SOCKET_SIZE:
-                break
-
-        return _buffer
+        return get_socket(self._socket)
 
 
 ###########################################################################

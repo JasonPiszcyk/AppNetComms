@@ -32,6 +32,7 @@ from __future__ import annotations
 import socketserver
 
 # Local app modules
+from appnetcomms.common import put_socket, get_socket
 from appnetcomms.constants import MAX_SOCKET_SIZE
 
 # Imports for python variable type hints
@@ -120,11 +121,16 @@ class TCPHandler(socketserver.BaseRequestHandler):
         # print(f"Connected: {self.client_address[0]}:{self.client_address[1]}")
         try:
             while True:
-                data = self.request.recv(MAX_SOCKET_SIZE)
+                data = get_socket(recv_socket=self.request)
+                # data = self.request.recv(MAX_SOCKET_SIZE)
+
                 if not data:
+                    # Client has disconnected
                     break
+
                 # Echo the received data back to the client
-                self.request.sendall(data)
+                put_socket(send_socket=self.request,buffer=data)
+                # self.request.sendall(data)
 
         except Exception as e:
             print(f"Error with client {self.client_address}: {e}")

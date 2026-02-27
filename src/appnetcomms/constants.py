@@ -43,7 +43,6 @@ from __future__ import annotations
 #
 # Constants
 #
-DEFAULT_LISTEN_ADDR = "localhost"
 DEFAULT_LISTEN_PORT = 15151
 
 MAX_SOCKET_SIZE = 1024

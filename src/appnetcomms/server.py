@@ -34,11 +34,9 @@ import socketserver
 # Local app modules
 from appnetcomms.tcp_handler import TCPHandler
 from appnetcomms.udp_handler import UDPHandler
-from appnetcomms.constants import (
-    DEFAULT_LISTEN_ADDR,
-    DEFAULT_LISTEN_PORT
-)
-from appnetcomms.typing import ProtocolType
+from appnetcomms.constants import DEFAULT_LISTEN_PORT
+from appnetcomms.typing import ProtocolType, IPFamily
+import appnetcomms.socket_server_wrappers as socket_server_wrappers
 
 # Imports for python variable type hints
 
@@ -75,6 +73,8 @@ class NetCommServer():
         protocol (ProtocolType) [ReadOnly]: The protocol the server is listening
             on
         port (int) [ReadOnly]: The port the server is listening on
+        family (IPFamily) [ReadOnly]: The IP family (IPv6, IPv4, or both)
+            supported by this server
         threaded (bool) [ReadOnly]: Return True if the server running a thread
             for each connection, False otherwise
     '''
@@ -83,9 +83,10 @@ class NetCommServer():
     #
     def __init__(
             self,
-            address: str = DEFAULT_LISTEN_ADDR,
+            address: str = "",
             protocol: ProtocolType = ProtocolType.TCP,
             port: int = DEFAULT_LISTEN_PORT,
+            family: IPFamily = IPFamily.BOTH,
             threaded: bool = False
     ):
         '''
@@ -95,6 +96,8 @@ class NetCommServer():
             address (str): The address the server should listen on
             protocol (ProtocolType): The protocol the server is listening on
             port (int): The port the server should listen on
+            family (IPFamily): The IP family (IPv6, IPv4, or both) supported by
+                this server
             threaded (bool): If True, start a new thread for each connection.
                 If False, process incoming connections in the same thread
 
@@ -104,15 +107,25 @@ class NetCommServer():
         Raises:
             None
         '''
-        if not isinstance(address, str): address = DEFAULT_LISTEN_ADDR
+        if not isinstance(address, str): address = ""
         if not isinstance(protocol, ProtocolType): protocol = ProtocolType.TCP
         if not isinstance(port, int): port = DEFAULT_LISTEN_PORT
+        if not isinstance(family, IPFamily): family = IPFamily.BOTH
         if not isinstance(threaded, bool): threaded = False
 
         # Private Attributes
+        if address:
+            self._address = address
+        else:
+            if family == IPFamily.IPV4:
+                self._address = "0.0.0.0"
+            else:
+                self._address = "::"
+
         self._address = address
         self._protocol = protocol
         self._port = port
+        self._family = family
         self._threaded = threaded
         self._server = None
 
@@ -146,6 +159,11 @@ class NetCommServer():
 
 
     @property
+    def family(self) -> IPFamily:
+        ''' The IP family supported by this server '''
+        return self._family
+
+    @property
     def threaded(self) -> bool:
         ''' Is the server running a thread for each connection '''
         return self._threaded
@@ -172,11 +190,6 @@ class NetCommServer():
         Raises:
             None
         '''
-        if self._protocol == ProtocolType.UDP:
-            self._request_handler = UDPHandler
-        else:
-            self._request_handler = TCPHandler
-
         # Determine the type of server to start
         if self._threaded:
             if self._protocol == ProtocolType.UDP:
@@ -196,9 +209,10 @@ class NetCommServer():
                     UDPHandler
                 )
             else:
-                self._server = socketserver.TCPServer(
+                self._server = socket_server_wrappers._TCP(
                     (self._address, self._port),
-                    TCPHandler
+                    TCPHandler,
+                    family=self._family
                 )
 
         with self._server:
