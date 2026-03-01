@@ -46,8 +46,10 @@ from __future__ import annotations
 DEFAULT_LISTEN_PORT = 15151
 
 MAX_SOCKET_SIZE = 1024
-MAX_BUFFER_SIZE = 65536
-BUFFER_PADDING = b'___BUFFER PADDING___'
+
+BUFFER_SIZE_BYTES = 4   # 32 bit number
+MAX_BUFFER_SIZE = 65536 - BUFFER_SIZE_BYTES
+
 
 
 ###########################################################################

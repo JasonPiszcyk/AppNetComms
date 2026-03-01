@@ -24,6 +24,7 @@ along with this program (See file: COPYING). If not, see
 __all__ = [
     "NetCommClient",
     "NetCommServer",
+    "DataPacket",
     "ProtocolType",
     "IPFamily"
 ]
@@ -31,4 +32,5 @@ __all__ = [
 # What to import as part of the the module (import module)
 from appnetcomms.client import NetCommClient
 from appnetcomms.server import NetCommServer
+from appnetcomms.data_packet import DataPacket
 from appnetcomms.typing import ProtocolType, IPFamily

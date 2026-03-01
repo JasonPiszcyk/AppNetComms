@@ -32,10 +32,11 @@ from __future__ import annotations
 import socket
 
 # Local app modules
+from appnetcomms.data_packet import DataPacket
 from appnetcomms.constants import (
     MAX_SOCKET_SIZE,
     MAX_BUFFER_SIZE,
-    BUFFER_PADDING
+    BUFFER_SIZE_BYTES
 )
 from appnetcomms.typing import ProtocolType
 
@@ -50,7 +51,6 @@ from appnetcomms.typing import ProtocolType
 #
 # Types
 #
-
 
 #
 # Constants
@@ -72,84 +72,57 @@ from appnetcomms.typing import ProtocolType
 #
 def put_socket(
         send_socket: socket.socket,
-        buffer: bytes = b"",
-        protocol: ProtocolType = ProtocolType.TCP,
-        address: str = "",
-        port: int = 0
+        packet: DataPacket | None = None
 ):
     '''
     Put a data buffer onto the socket
 
     Args:
         send_socket (socket.socket): The socket to put the data on
-        buffer (bytes): The data to send
-        protocol (ProtocolType): The protocol used to send
-        address (str): The address the client should connect to (not used if
-            protocol is TCP)
-        port (int): The port the client should connect to (not used if protocol
-            is TCP)
+        packet (DataPacket): The data packet (data and meta info)
 
     Returns:
         None
 
     Raises:
         AssertionError:
-            When buffer is not of type bytes
-            When protocol type is not valid
-            When protocol is UDP, and address is not a valid string
-            When protocol is UDP, and port is not a positive integer <= 65535
+            When packet is not of type DataPacket
         FileNotFoundError:
             When the socket has not been created
         MemoryError:
             When the buffer to be sent exceeds the maximum size
     '''
-    assert isinstance(buffer, bytes), "buffer must be of type bytes"
+    assert isinstance(packet, DataPacket), "packet must be of type DataPacket"
     if not isinstance(send_socket, socket.socket) or not send_socket:
         raise FileNotFoundError("socket has not been created")
 
-    assert isinstance(protocol, ProtocolType), (
-        "protocol must be of type ProtocolType"
-    )
-
-    if protocol == ProtocolType.UDP:
-        assert isinstance(address, str) and address, (
-             "address must be a non-empty string"
-        )
-        assert isinstance(port, int) and port > 0 and port < 65536, (
-            "port must be a positive integer between 1 and 65535"
-        )
-
-    # Ensure the buffer isn't too big
-    if len(buffer) > MAX_BUFFER_SIZE:
-        raise MemoryError(f"send buffer exceeded {MAX_BUFFER_SIZE} bytes")
-
     # Copy the buffer so the original is left intact
-    _buffer_copy = bytes(buffer)
+    _buffer_copy = bytes(packet.data)
 
-    # Send the message in parts
-    while len(_buffer_copy) > 0:
-        _send_buffer = _buffer_copy[:MAX_SOCKET_SIZE]
-        _buffer_copy = _buffer_copy[MAX_SOCKET_SIZE:]
+    if packet.protocol == ProtocolType.TCP:
+        # Ensure the buffer isn't too big
+        if len(packet.data) > MAX_BUFFER_SIZE:
+            raise MemoryError(f"send buffer exceeded {MAX_BUFFER_SIZE} bytes")
 
-        # If we send MAX_SOCKET_SIZE bytes, receiver assumes there is more
-        # data and will wait for it.  If there is nothiung else to send,
-        # pad the buffer_copy to ensure the other end finishes constructing
-        # the receive buffer.
-        if (len(_buffer_copy) < 1 and len(_send_buffer) == MAX_SOCKET_SIZE):
-            _buffer_copy = BUFFER_PADDING
+        # Prepend to size of the buffer to the buffer data
+        _buffer_size = len(_buffer_copy).to_bytes(
+            BUFFER_SIZE_BYTES,
+            byteorder="big",
+            signed=False
+        )
+        _send_buffer = _buffer_size + _buffer_copy
 
-        if protocol == ProtocolType.TCP:
-            # TCP
-            send_socket.sendall(_send_buffer)
-        else:
-            # UDP
-            send_socket.sendto(_send_buffer, (address, port))
+        # Send the message
+        send_socket.sendall(_send_buffer)
+
+    else:   # packet.protocol == ProtocolType.UDP
+        send_socket.sendto(_buffer_copy, (packet.address, packet.port))
 
 
 #
-# get_socket
+# get_socket_tcp
 #
-def get_socket(recv_socket: socket.socket) -> bytes:
+def get_socket_tcp(recv_socket: socket.socket) -> DataPacket | None:
     '''
     Build a data buffer from data read from the socket
 
@@ -169,11 +142,26 @@ def get_socket(recv_socket: socket.socket) -> bytes:
         raise FileNotFoundError("socket has not been created")
 
     _buffer = b""
-    while True:
+
+    # Get the size of the data and the first part of the data
+    _buffer_part = recv_socket.recv(MAX_SOCKET_SIZE)
+    if not _buffer_part:
+        # Client has disconnected
+        return None
+
+    _buffer_size_bytes = _buffer_part[:BUFFER_SIZE_BYTES]
+    _buffer = _buffer_part[BUFFER_SIZE_BYTES:]
+
+    _buffer_size = int.from_bytes(
+        _buffer_size_bytes,
+        byteorder="big",
+        signed=False
+    )
+
+    while _buffer_size > len(_buffer):
         _buffer_part = recv_socket.recv(MAX_SOCKET_SIZE)
-        if _buffer_part == BUFFER_PADDING:
-            # We have all of the data, so ignore this
-            # Padding sent as message size was right on boundary
+        if not _buffer_part:
+            # Client has disconnected
             break
 
         # Check to make sure the buffer hasn't grown too large
@@ -184,11 +172,41 @@ def get_socket(recv_socket: socket.socket) -> bytes:
 
         _buffer = _buffer + _buffer_part
 
-        # Check to see if more data is expected
-        if len(_buffer_part) < MAX_SOCKET_SIZE:
-            break
+    if _buffer:
+        return DataPacket(data=_buffer)
+    else:
+        return None
 
-    return _buffer
+
+#
+# get_socket_udp
+#
+def get_socket_udp(recv_socket: socket.socket) -> DataPacket:
+    '''
+    Get a UDP datagram from the socket
+
+    Args:
+        recv_socket (socket.socket): The socket to read from
+
+    Returns:
+        bytes - The data buffer
+
+    Raises:
+        FileNotFoundError:
+            When the socket has not been created
+        MemoryError:
+            When the receive buffer exceeds the maximum size
+    '''
+    if not isinstance(recv_socket, socket.socket) or not recv_socket:
+        raise FileNotFoundError("socket has not been created")
+
+    _data, _address = recv_socket.recvfrom(MAX_SOCKET_SIZE) 
+
+    return DataPacket(
+        data=_data,
+        address=_address[0],
+        protocol=ProtocolType.UDP,
+        port=_address[1])
 
 
 ###########################################################################

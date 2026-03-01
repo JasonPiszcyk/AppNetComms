@@ -29,6 +29,7 @@ along with this program (See file: COPYING). If not, see
 # System Modules
 
 # Local app modules
+from appnetcomms import ProtocolType, IPFamily
 
 # Imports for python variable type hints
 
@@ -45,6 +46,25 @@ along with this program (See file: COPYING). If not, see
 #
 # Constants
 #
+SERVER_PORT = 15151
+SERVER_ADDRESS_IPv4 = "127.0.0.1"
+SERVER_ADDRESS_IPv6 = "::1"
+
+# Different Protocols to try out
+SERVER_PROTOCOLS = {
+    "TCP": ProtocolType.TCP,
+    "UDP": ProtocolType.UDP
+}
+
+
+# Different families to try out
+SERVER_FAMILIES = {
+    "IPv4": IPFamily.IPV4,
+    "IPv6": IPFamily.IPV6,
+    "Both": IPFamily.BOTH
+}
+
+SIMPLE_DATA_BYTES = b"simple_data_byes"
 
 #
 # Global Variables

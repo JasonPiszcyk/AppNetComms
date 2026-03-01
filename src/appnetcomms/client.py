@@ -32,13 +32,9 @@ from __future__ import annotations
 import socket
 
 # Local app modules
-from appnetcomms.common import put_socket, get_socket
-from appnetcomms.constants import (
-    DEFAULT_LISTEN_PORT,
-    MAX_SOCKET_SIZE,
-    MAX_BUFFER_SIZE,
-    BUFFER_PADDING
-)
+from appnetcomms.data_packet import DataPacket
+from appnetcomms.common import put_socket, get_socket_tcp, get_socket_udp
+from appnetcomms.constants import DEFAULT_LISTEN_PORT
 from appnetcomms.typing import ProtocolType, IPFamily
 
 # Imports for python variable type hints
@@ -196,8 +192,7 @@ class NetCommClient():
                         (self._address, self._port)
                     )
 
-            else:
-                # UDP Connection
+            else:   # self._protocol == ProtocolType.UDP
                 if self._family == IPFamily.IPV4:
                     self._socket = socket.socket(
                         socket.AF_INET,
@@ -242,11 +237,36 @@ class NetCommClient():
 
 
     #
+    # disconnect
+    #
+    def disconnect(self):
+        '''
+        Disconnect from the server
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            None
+        '''
+        if isinstance(self._socket, socket.socket):
+            # If TCP send a shutdown
+            if self._protocol == ProtocolType.TCP:
+                self._socket.shutdown(socket.SHUT_RDWR)
+        
+            # Close the socket
+            self._socket.close()
+
+
+    #
     # send
     #
     def send(self, buffer: bytes = b""):
         '''
-        Start the server
+        Send to the socket
 
         Args:
             buffer (bytes): The data to send
@@ -266,13 +286,14 @@ class NetCommClient():
         if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
 
-        put_socket(
-            send_socket=self._socket,
-            buffer=buffer,
-            protocol=self._protocol,
-            address=self._address,
-            port=self._port
+        _packet = DataPacket(
+            data=buffer,
+            address=self.address,
+            protocol=self.protocol,
+            port=self.port
         )
+
+        put_socket(send_socket=self._socket, packet=_packet)
 
 
     #
@@ -295,7 +316,17 @@ class NetCommClient():
         if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
 
-        return get_socket(self._socket)
+        _data = b""
+
+        if self._protocol == ProtocolType.TCP:
+            _packet = get_socket_tcp(self._socket)
+        else:
+            _packet = get_socket_udp(self._socket)
+
+        if isinstance(_packet, DataPacket):
+            _data = _packet.data
+
+        return _data
 
 
 ###########################################################################

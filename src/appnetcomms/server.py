@@ -32,13 +32,13 @@ from __future__ import annotations
 import socketserver
 
 # Local app modules
-from appnetcomms.tcp_handler import TCPHandler
-from appnetcomms.udp_handler import UDPHandler
 from appnetcomms.constants import DEFAULT_LISTEN_PORT
 from appnetcomms.typing import ProtocolType, IPFamily
-import appnetcomms.socket_server_wrappers as socket_server_wrappers
+import appnetcomms.socket_server_factory as socket_server_factory
+import appnetcomms.request_handler_factory as request_handler_factory
 
 # Imports for python variable type hints
+from typing import Callable
 
 
 ###########################################################################
@@ -87,7 +87,8 @@ class NetCommServer():
             protocol: ProtocolType = ProtocolType.TCP,
             port: int = DEFAULT_LISTEN_PORT,
             family: IPFamily = IPFamily.BOTH,
-            threaded: bool = False
+            threaded: bool = False,
+            request_handler: Callable | None = None
     ):
         '''
         Initialises the instance.
@@ -100,6 +101,9 @@ class NetCommServer():
                 this server
             threaded (bool): If True, start a new thread for each connection.
                 If False, process incoming connections in the same thread
+            request_handler (Callable): Function to process received data.
+                Returns a DataPacket instance or None.  If return value is a
+                DataPacket, return DataPacket.data via the socket
 
         Returns:
             None
@@ -112,6 +116,7 @@ class NetCommServer():
         if not isinstance(port, int): port = DEFAULT_LISTEN_PORT
         if not isinstance(family, IPFamily): family = IPFamily.BOTH
         if not isinstance(threaded, bool): threaded = False
+        if not callable(request_handler): request_handler = None
 
         # Private Attributes
         if address:
@@ -127,6 +132,7 @@ class NetCommServer():
         self._port = port
         self._family = family
         self._threaded = threaded
+        self._request_handler = request_handler
         self._server = None
 
         # Attributes
@@ -190,31 +196,23 @@ class NetCommServer():
         Raises:
             None
         '''
-        # Determine the type of server to start
-        if self._threaded:
-            if self._protocol == ProtocolType.UDP:
-                self._server = socketserver.ThreadingUDPServer(
-                    (self._address, self._port),
-                    UDPHandler
-                )
-            else:
-                self._server = socketserver.ThreadingTCPServer(
-                    (self._address, self._port),
-                    TCPHandler
-                )
-        else:
-            if self._protocol == ProtocolType.UDP:
-                self._server = socketserver.UDPServer(
-                    (self._address, self._port),
-                    UDPHandler
-                )
-            else:
-                self._server = socket_server_wrappers._TCP(
-                    (self._address, self._port),
-                    TCPHandler,
-                    family=self._family
-                )
+        # Generate a socketserver class via the factory
+        _socketserver = socket_server_factory.SocketServerFactory(
+            protocol=self._protocol,
+            family=self._family,
+            threaded=self._threaded
+        )
 
+        # Generate a handler class via the factory
+        _handler = request_handler_factory.RequestHandlerFactory(
+            protocol=self._protocol,
+            request_handler=self._request_handler
+        )
+
+        # Create the server using the generated classes
+        self._server = _socketserver((self._address, self._port), _handler)
+
+        # Start the server
         with self._server:
             self._server.serve_forever()
 
@@ -235,15 +233,7 @@ class NetCommServer():
         Raises:
             None
         '''
-        if isinstance(
-            self._server,
-            (
-                socketserver.ThreadingUDPServer,
-                socketserver.ThreadingTCPServer,
-                socketserver.UDPServer,
-                socketserver.TCPServer
-            )
-        ):
+        if isinstance(self._server, socketserver.BaseServer):
             # Shutdown the server
             self._server.shutdown()
 
