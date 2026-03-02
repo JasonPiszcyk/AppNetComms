@@ -65,6 +65,8 @@ SERVER_FAMILIES = {
 }
 
 SIMPLE_DATA_BYTES = b"simple_data_byes"
+RANDOM_BYTE_LEN = 5000
+RANDOM_RESPONSE_PREFIX = b"__RANDOM_RESPONSE_PREFIX__"
 
 #
 # Global Variables

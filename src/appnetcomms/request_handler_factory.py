@@ -183,7 +183,7 @@ def RequestHandlerFactory(
                     isinstance(_result, DataPacket) and 
                     isinstance(self.request[1], socket.socket)
                 ):
-                    put_socket(send_socket=self.request[1], packet=_packet)
+                    put_socket(send_socket=self.request[1], packet=_result)
 
 
     # Return the class

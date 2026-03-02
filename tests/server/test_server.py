@@ -31,13 +31,22 @@ from tests.constants import *
 import pytest
 import time
 import subprocess
+import random
 
 # Local app modules
-from appnetcomms import NetCommServer, NetCommClient, ProtocolType, IPFamily
+from appnetcomms import (
+    NetCommServer,
+    NetCommClient,
+    ProtocolType,
+    IPFamily,
+    DataPacket
+)
+from appnetcomms.constants import MAX_SOCKET_SIZE
+
 from apptasking.tasking import Tasking, TaskTask
 
 # Imports for python variable type hints
-from typing import Any, Final
+from typing import Callable
 
 
 ###########################################################################
@@ -91,7 +100,8 @@ def get_netstat_listen_info() -> str:
 def create_comm_server_task(
         protocol: ProtocolType = ProtocolType.TCP,
         family: IPFamily = IPFamily.IPV6,
-        threaded: bool = False
+        threaded: bool = False,
+        request_handler: Callable | None = None
 ) -> TaskTask:
     # Create a task manager
     _task_mgr = Tasking(task_type="thread")
@@ -102,7 +112,8 @@ def create_comm_server_task(
         protocol = protocol,
         port = SERVER_PORT,
         family = family,
-        threaded = threaded
+        threaded = threaded,
+        request_handler=request_handler
     )
 
     # Return the task
@@ -111,6 +122,24 @@ def create_comm_server_task(
         start_func=_server.start,
         stop_func=_server.stop,
     )
+
+
+#
+# Data Handler
+#
+def data_handler(packet: DataPacket) -> DataPacket | None:
+    # Test will hang if None returned as it is waiting for response
+    _response_packet = DataPacket(
+        data=SIMPLE_DATA_BYTES,
+        address=packet.address,
+        protocol=packet.protocol,
+        port=packet.port
+    )
+
+    if isinstance(packet, DataPacket):
+        _response_packet.data = RANDOM_RESPONSE_PREFIX + packet.data
+
+    return _response_packet
 
 
 ###########################################################################
@@ -131,7 +160,7 @@ class Test_Server():
     #
     # _send_client
     #
-    def _send_client(self, server_family, server_protocol, data):
+    def _send_client(self, server_family, server_protocol, data, response):
         '''
         Basic tests
 
@@ -139,6 +168,7 @@ class Test_Server():
             server_family: The family the server is using
             server_protocol: The protocol the server is using
             data: Data to be sent
+            response: The expected response
 
         Returns:
             None
@@ -202,7 +232,17 @@ class Test_Server():
                     _client.send(data)
                     _buffer = _client.receive()
                     _client.disconnect()
-                    assert _buffer == data
+
+                    if _proto == ProtocolType.UDP:
+                        # Buffer can only container MAX_SOCKET_SIZE bytes
+                        assert (
+                            _buffer[:MAX_SOCKET_SIZE] == 
+                                response[:MAX_SOCKET_SIZE]
+                        )
+
+                    else:   # _proto == ProtocolType.TCP:
+                        # Buffer contains all of data
+                        assert _buffer == response
 
 
     #
@@ -249,7 +289,9 @@ class Test_Server():
             assert _listen_port[:3] == SERVER_PROTOCOLS[protocol].value
             if SERVER_FAMILIES[family] == IPFamily.IPV4:
                 assert _listen_port[3:] == "4"
-            else:
+            elif SERVER_FAMILIES[family] == IPFamily.IPV6:
+                assert _listen_port[3:] == "6"
+            else:   # SERVER_FAMILIES[family] == IPFamily.BOTH
                 assert _listen_port[3:] == "46"
 
             # Stop the server
@@ -298,7 +340,60 @@ class Test_Server():
             self._send_client(
                 SERVER_FAMILIES[family],
                 SERVER_PROTOCOLS[protocol],
+                SIMPLE_DATA_BYTES,
                 SIMPLE_DATA_BYTES
+            )
+
+            # Stop the server
+            _task.stop()
+
+
+    #
+    # Process data with custom handler - generate random data of larger size
+    #
+    @pytest.mark.parametrize("family", SERVER_FAMILIES)
+    @pytest.mark.parametrize("protocol", SERVER_PROTOCOLS)
+    def test_custom_handler(self, family, protocol):
+        '''
+        Generate a random byte string and send this. Process with a custom
+        handler
+
+        Args:
+            family: The family being tested (eg IPv6, IPv4)
+            protocol: The protocol being tested (eg TCP, UDP)
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError:
+                when test fails
+        '''
+        assert family in SERVER_FAMILIES
+        assert protocol in SERVER_PROTOCOLS
+
+        # Create a thread/non thread version of each
+        for _threaded in [ False, True ]:
+            _task = create_comm_server_task(
+                protocol=SERVER_PROTOCOLS[protocol],
+                family=SERVER_FAMILIES[family],
+                threaded=_threaded,
+                request_handler=data_handler
+            )
+
+            # Start the server
+            _task.start()
+
+            # Wait a bit for it to start
+            time.sleep(0.1)
+
+            # Try the client
+            _data = random.randbytes(RANDOM_BYTE_LEN)
+            self._send_client(
+                SERVER_FAMILIES[family],
+                SERVER_PROTOCOLS[protocol],
+                _data,
+                RANDOM_RESPONSE_PREFIX + _data
             )
 
             # Stop the server
