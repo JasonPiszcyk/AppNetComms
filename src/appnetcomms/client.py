@@ -30,6 +30,7 @@ from __future__ import annotations
 
 # System Modules
 import socket
+from applogging.logging import get_logger, init_console_logger
 
 # Local app modules
 from appnetcomms.data_packet import DataPacket
@@ -52,6 +53,7 @@ from appnetcomms.typing import ProtocolType, IPFamily
 #
 # Constants
 #
+DEFAULT_LOGGER_NAME = "AppNetComms"
 
 #
 # Global Variables
@@ -82,7 +84,9 @@ class NetCommClient():
             address: str = "",
             protocol: ProtocolType = ProtocolType.TCP,
             port: int = DEFAULT_LISTEN_PORT,
-            family: IPFamily = IPFamily.BOTH
+            family: IPFamily = IPFamily.BOTH,
+            logger_name: str = "",
+            logger_level: str = "CRITICAL"
     ):
         '''
         Initialises the instance.
@@ -93,6 +97,12 @@ class NetCommClient():
             port (int): The port the client should connect to
             family (IPFamily): The IP family (IPv6, IPv4, or both) supported by
                 this connection
+            logger_name (str): The name of the logger to use.  If empty (or
+                not a string) then a logger will be created to log to the
+                console
+            logger_level (str): If no logger name is provided, the created
+                logger will be set to log events at or above this level (default
+                = "CRITICAL")
 
         Returns:
             None
@@ -114,6 +124,13 @@ class NetCommClient():
         self._port = port
         self._family = family
         self._socket = None
+
+        if isinstance(logger_name, str) and logger_name:
+            self._logger = get_logger(name=logger_name)
+
+        else:
+            self._logger = init_console_logger(name=DEFAULT_LOGGER_NAME)
+            self._logger.setLevel(level=logger_level)
 
         # Attributes
 
@@ -171,6 +188,8 @@ class NetCommClient():
         Raises:
             None
         '''
+        self._logger.debug("Client -> Connect")
+
         if not isinstance(self._socket, socket.socket):
             if self._protocol == ProtocolType.TCP:
                 if self._family == IPFamily.IPV4:
@@ -235,6 +254,9 @@ class NetCommClient():
                     # Don't hide the exception raised by the socket attempt
                     if _socket_exception: raise _socket_exception
 
+        else:   # isinstance(self._socket, socket.socket):
+            self._logger.warning("Client socket already created")
+
 
     #
     # disconnect
@@ -252,6 +274,8 @@ class NetCommClient():
         Raises:
             None
         '''
+        self._logger.debug("Client -> Disconnect")
+
         if isinstance(self._socket, socket.socket):
             # If TCP send a shutdown
             if self._protocol == ProtocolType.TCP:
@@ -286,6 +310,8 @@ class NetCommClient():
         if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
 
+        self._logger.debug("Client -> Send")
+
         _packet = DataPacket(
             data=buffer,
             address=self.address,
@@ -315,6 +341,8 @@ class NetCommClient():
         '''
         if not isinstance(self._socket, socket.socket) or not self._socket:
             raise FileNotFoundError("socket has not been created")
+
+        self._logger.debug("Client -> Receive")
 
         _data = b""
 

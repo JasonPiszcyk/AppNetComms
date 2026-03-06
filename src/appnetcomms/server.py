@@ -30,6 +30,7 @@ from __future__ import annotations
 
 # System Modules
 import socketserver
+from applogging.logging import get_logger, init_console_logger
 
 # Local app modules
 from appnetcomms.constants import DEFAULT_LISTEN_PORT
@@ -53,6 +54,7 @@ from typing import Callable
 #
 # Constants
 #
+DEFAULT_LOGGER_NAME = "AppNetComms"
 
 #
 # Global Variables
@@ -88,7 +90,9 @@ class NetCommServer():
             port: int = DEFAULT_LISTEN_PORT,
             family: IPFamily = IPFamily.BOTH,
             threaded: bool = False,
-            request_handler: Callable | None = None
+            request_handler: Callable | None = None,
+            logger_name: str = "",
+            logger_level: str = "CRITICAL"
     ):
         '''
         Initialises the instance.
@@ -104,6 +108,12 @@ class NetCommServer():
             request_handler (Callable): Function to process received data.
                 Returns a DataPacket instance or None.  If return value is a
                 DataPacket, return DataPacket.data via the socket
+            logger_name (str): The name of the logger to use.  If empty (or
+                not a string) then a logger will be created to log to the
+                console
+            logger_level (str): If no logger name is provided, the created
+                logger will be set to log events at or above this level (default
+                = "CRITICAL")
 
         Returns:
             None
@@ -134,6 +144,13 @@ class NetCommServer():
         self._threaded = threaded
         self._request_handler = request_handler
         self._server = None
+
+        if isinstance(logger_name, str) and logger_name:
+            self._logger = get_logger(name=logger_name)
+
+        else:
+            self._logger = init_console_logger(name=DEFAULT_LOGGER_NAME)
+            self._logger.setLevel(level=logger_level)
 
         # Attributes
 
@@ -196,6 +213,8 @@ class NetCommServer():
         Raises:
             None
         '''
+        self._logger.debug("Server -> Start")
+
         # Generate a socketserver class via the factory
         _socketserver = socket_server_factory.SocketServerFactory(
             protocol=self._protocol,
@@ -233,6 +252,8 @@ class NetCommServer():
         Raises:
             None
         '''
+        self._logger.debug("Server -> Stop")
+
         if isinstance(self._server, socketserver.BaseServer):
             # Shutdown the server
             self._server.shutdown()
